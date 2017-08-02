@@ -433,7 +433,7 @@ func (l *logStream) collectBatch() {
 			}
 			unprocessedLine := msg.Line
 			if l.multilinePattern != nil {
-				if l.multilinePattern.Match(unprocessedLine) || len(eventBuffer)+len(unprocessedLine) > maximumBytesPerEvent {
+				if l.multilinePattern.Match(unprocessedLine) || len(eventBuffer)+len(unprocessedLine)+1 > maximumBytesPerEvent {
 					// This is a new log event or we will exceed max bytes per event
 					// so flush the current eventBuffer to events and reset timestamp
 					l.processEvent(batch, eventBuffer, eventBufferTimestamp)
@@ -462,6 +462,8 @@ func (l *logStream) collectBatch() {
 // byte overhead (defined in perEventBytes) which is accounted for in split- and
 // batch-calculations.
 func (l *logStream) processEvent(batch *eventBatch, unprocessedLine []byte, timestamp int64) {
+	// Ensure the bytes of any pre-existing events are counted
+	bytes := batch.bytes
 	for len(unprocessedLine) > 0 {
 		// Split line length so it does not exceed the maximum
 		lineBytes := len(unprocessedLine)
