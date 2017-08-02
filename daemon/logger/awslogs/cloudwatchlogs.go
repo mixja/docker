@@ -462,8 +462,6 @@ func (l *logStream) collectBatch() {
 // byte overhead (defined in perEventBytes) which is accounted for in split- and
 // batch-calculations.
 func (l *logStream) processEvent(batch *eventBatch, unprocessedLine []byte, timestamp int64) {
-	// Ensure the bytes of any pre-existing events are counted
-	bytes := batch.bytes
 	for len(unprocessedLine) > 0 {
 		// Split line length so it does not exceed the maximum
 		lineBytes := len(unprocessedLine)
