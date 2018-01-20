@@ -433,6 +433,7 @@ func (l *logStream) collectBatch() {
 			}
 			unprocessedLine := msg.Line
 			if l.multilinePattern != nil {
+				// Add 1 byte for extra \n character with multiline matching
 				if l.multilinePattern.Match(unprocessedLine) || len(eventBuffer)+len(unprocessedLine)+1 > maximumBytesPerEvent {
 					// This is a new log event or we will exceed max bytes per event
 					// so flush the current eventBuffer to events and reset timestamp

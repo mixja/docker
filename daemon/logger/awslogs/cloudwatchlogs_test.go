@@ -867,6 +867,78 @@ func TestCollectBatchMaxEvents(t *testing.T) {
 	}
 }
 
+func TestCollectBatchMaxTotalBytes34314(t *testing.T) {
+	mockClient := newMockClientBuffered(2)
+	stream := &logStream{
+		client:        mockClient,
+		logGroupName:  groupName,
+		logStreamName: streamName,
+		sequenceToken: aws.String(sequenceToken),
+		messages:      make(chan *logger.Message, 3),
+	}
+	mockClient.putLogEventsResult <- &putLogEventsResult{
+		successResult: &cloudwatchlogs.PutLogEventsOutput{
+			NextSequenceToken: aws.String(nextSequenceToken),
+		},
+	}
+	mockClient.putLogEventsResult <- &putLogEventsResult{
+		successResult: &cloudwatchlogs.PutLogEventsOutput{
+			NextSequenceToken: aws.String(nextSequenceToken + "2"),
+		},
+	}
+	var ticks = make(chan time.Time)
+	newTicker = func(_ time.Duration) *time.Ticker {
+		return &time.Ticker{
+			C: ticks,
+		}
+	}
+
+	go stream.collectBatch()
+
+	longline := strings.Repeat("A", maximumBytesPerPut)
+
+	// Should produce 1 put request, 1 with 4 events, all A's
+	// and a second pending put request with 1 event that
+	// has some A's and is terminated with a B
+	stream.Log(&logger.Message{
+		Line:      []byte(longline + "B"),
+		Timestamp: time.Time{},
+	})
+	// Should cause the previous pending batch to overfill and
+	// partially fill another batch, which is sent when the
+	// stream is closed.
+	stream.Log(&logger.Message{
+		Line:      []byte(longline[:len(longline)-1] + "C"),
+		Timestamp: time.Time{},
+	})
+
+	// no ticks
+	stream.Close()
+
+	argument := <-mockClient.putLogEventsArgument
+	assert.NotNil(t, argument)
+	bytes := 0
+	for _, event := range argument.LogEvents {
+		bytes += len(*event.Message)
+	}
+	assert.True(t, bytes <= maximumBytesPerPut, "Expected <= %d bytes but was %d", maximumBytesPerPut, bytes)
+
+	argument = <-mockClient.putLogEventsArgument
+	assert.NotNil(t, argument)
+	bytes = 0
+	for _, event := range argument.LogEvents {
+		bytes += len(*event.Message)
+	}
+	assert.True(t, bytes <= maximumBytesPerPut, "Expected <= %d bytes but was %d", maximumBytesPerPut, bytes)
+	message := *argument.LogEvents[0].Message
+	assert.True(t, message[len(message)-1:] == "B", "Expected message to be %s but was %s", "B", message[len(message)-1:])
+
+	argument = <-mockClient.putLogEventsArgument
+	assert.NotNil(t, argument)
+	message = *argument.LogEvents[len(argument.LogEvents)-1].Message
+	assert.True(t, message[len(message)-1:] == "C", "Expected message to be %s but was %s", "C", message[len(message)-1:])
+}
+
 func TestCollectBatchMaxTotalBytes(t *testing.T) {
 	expectedPuts := 2
 	mockClient := newMockClientBuffered(expectedPuts)
